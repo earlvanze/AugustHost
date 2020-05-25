@@ -93,7 +93,7 @@ def get_invalid_pins(loaded_pins):
     return invalid_pins
 
 
-def copy_pins():
+def copy_pins(august_access_token):
     print("Copy August PINs from one lock to another:")
     locks = get_locks(august_access_token)
     for i in range(0, (len(locks))):
@@ -302,14 +302,13 @@ def august_main():
         print("1) Batch delete expired PINs")
         print("2) Batch update invalid PINs")
         print("3) Search for a guest by first name")
-        print("4) Quit")
+        print("4) Copy PINs from one lock to another")
+        print("5) Quit")
         selection = int(input("Choose an option: "))
-        while(selection not in [1, 2, 3, 4]):
+        while(selection not in [1, 2, 3, 4, 5]):
             selection = int(input("Invalid selection. Choose an option: "))
 
-        if selection == 4:
-            sys.exit("Terminating...")
-        else:
+        if selection in [1, 2, 3]:
             locks = get_locks(august_access_token)
             for i in range(0, (len(locks))):
                 print(f'{i+1})', locks[i]['LockName'])
@@ -319,14 +318,19 @@ def august_main():
             pins = get_pins(locks[lock_num]['LockId'], august_access_token)
             loaded_pins = pins[1][1]
         
-        if selection == 1:
-            batch_delete_expired_pins(loaded_pins, locks, lock_num, august_access_token)
-        elif selection == 2:
-            batch_update_invalid_pins(loaded_pins, locks, lock_num, august_access_token)
-        elif selection == 3:
-            # TODO: Look up guest by first name so you can retrieve PIN or modify access
-            first_name = input("Enter guest's first name: ")
-            print(get_pin_by_first_name(first_name, loaded_pins))
+            if selection == 1:
+                batch_delete_expired_pins(loaded_pins, locks, lock_num, august_access_token)
+            elif selection == 2:
+                batch_update_invalid_pins(loaded_pins, locks, lock_num, august_access_token)
+            elif selection == 3:
+                # TODO: Look up guest by first name so you can retrieve PIN or modify access
+                first_name = input("Enter guest's first name: ")
+                print(get_pin_by_first_name(first_name, loaded_pins))
+
+        elif selection == 4:
+            copy_pins(august_access_token)
+        elif selection == 5:
+            sys.exit("Terminating...")
         else:
             sys.exit("This is not supposed to happen. Exiting.")
 
@@ -371,8 +375,8 @@ class StandaloneApplication(gunicorn.app.base.BaseApplication):
 
 
 def main():
-#    copy_pins()
     august_main()
+
 '''
     # This allows us to use a plain HTTP callback
     os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = "1"
