@@ -8,12 +8,23 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from bs4 import BeautifulSoup
 
-username_str = '88madisonave@gmail.com'
-password_str = 'Airbnb1Rentals2'
-user_id_str = '44434571'
-
-#api = airbnb.Api(username_str, password_str)
-api = airbnb.Api(access_token='8qb5u8hbhwwr65uh08yozc49t')
+if os.path.exists('airbnb_token.txt'):
+    with open('airbnb_token.txt', 'r') as file:
+        airbnb_token = file.readline()
+        api = airbnb.Api(access_token=airbnb_token)
+else:
+    if os.path.exists('airbnb_auth.json'):
+        with open('airbnb_auth.json', 'r') as file:
+            json_repr = file.readline()
+            data = json.loads(json_repr)
+            username_str = data['email']
+            user_id_str = data['user_id']
+            password_str = data['password']
+    else:
+        august_email = input("Airbnb Email Address: ")
+        august_phone = input("Airbnb User ID (e.g. 12345678): ")
+        august_pass = input("Airbnb Password: ")
+    api = airbnb.Api(username_str, password_str)
 
 bnbhostapi = {
   'username': user_id_str,
