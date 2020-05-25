@@ -1,6 +1,6 @@
 /August
 .idea
-
+*.json
 # Authentication
 access_token.txt
 airbnb_token.txt
