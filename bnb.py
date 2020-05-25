@@ -26,6 +26,7 @@ else:
         august_pass = input("Airbnb Password: ")
     api = airbnb.Api(username_str, password_str)
 
+
 bnbhostapi = {
   'username': user_id_str,
   'password': password_str,
