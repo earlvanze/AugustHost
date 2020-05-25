@@ -1,6 +1,7 @@
 from __future__ import print_function
 import requests
 import os
+import sys
 import json
 import traceback
 from flask import Flask, flash, render_template, redirect, url_for, session, request, jsonify
@@ -24,11 +25,11 @@ def index():
     return render_template('index.html')
 
 
-def auth():
+def auth(august_email, august_phone, august_pass):
     response = requests.post(
         'https://api-production.august.com/session',
         headers = {'Content-Type': 'application/json', 'x-august-api-key': AUGUST_API_KEY},
-        json = {'identifier': 'phone:{}'.format(AUGUST_PHONE), 'installId':'0', 'password': AUGUST_PASS}
+        json = {'identifier': 'phone:{}'.format(august_phone), 'installId':'0', 'password': august_pass}
     )
 
     access_token = response.headers['x-august-access-token']
@@ -36,14 +37,14 @@ def auth():
     response = requests.post(
         'https://api-production.august.com/validation/email',
         headers = {'Content-Type': 'application/json', 'x-august-api-key': AUGUST_API_KEY, 'x-august-access-token': access_token},
-        json = {'value': AUGUST_EMAIL}
+        json = {'value': august_email}
     )
     verification_code = input("Please enter the verification code from your email: ")
     print("verifying...")
     response = requests.post(
         'https://api-production.august.com/validate/email',
         headers = {'Content-Type': 'application/json', 'x-august-api-key': AUGUST_API_KEY, 'x-august-access-token': access_token},
-        json = {'email': AUGUST_EMAIL, 'code': verification_code}
+        json = {'email': august_email, 'code': verification_code}
     )
     access_token = response.headers['x-august-access-token']
     print(response)
@@ -280,39 +281,54 @@ def august_main():
 #    get_reservations()
 #    browser.quit()
 
-    if os.path.exists('august_auth.json'):
-        with open('august_auth.json', 'r') as file:
-            json_repr = file.readline()
-            data = json.loads(json_repr)
-            AUGUST_EMAIL = data['email']
-            AUGUST_PHONE = data['phone']
-            AUGUST_PASS = data['password']
-    else:
-        AUGUST_EMAIL = input("August Email Address:")
-        AUGUST_PHONE = input("August Phone Number:")
-        AUGUST_PASS = input("August Password:")
-
-
     if os.path.exists('access_token.txt'):
         with open('access_token.txt', 'r') as file:
             august_access_token = file.readline()
     else:
-        august_access_token = auth()
+        if os.path.exists('august_auth.json'):
+            with open('august_auth.json', 'r') as file:
+                json_repr = file.readline()
+                data = json.loads(json_repr)
+                august_email = data['email']
+                august_phone = data['phone']
+                august_pass = data['password']
+        else:
+            august_email = input("August Email Address: ")
+            august_phone = input("August Phone Number (e.g. +12345678910): ")
+            august_pass = input("August Password: ")
+        august_access_token = auth(august_email, august_phone, august_pass)
 
-    locks = get_locks(august_access_token)
-    for i in range(0, (len(locks))):
-        print(f'{i+1}) ', locks[i]['LockName'])
-    lock_num = int(input("Select a lock: "))-1
-    while(lock_num not in [0, 1, 2, 3]):
-        lock_num = int(input("Invalid selection. Select a lock: "))
-    pins = get_pins(locks[lock_num]['LockId'], august_access_token)
-    loaded_pins = pins[1][1]
-    batch_delete_expired_pins(loaded_pins, locks, lock_num, august_access_token)
-#    batch_update_invalid_pins(loaded_pins, locks, lock_num, august_access_token)
+    while True:
+        print("1) Batch delete expired PINs")
+        print("2) Batch update invalid PINs")
+        print("3) Search for a guest by first name")
+        print("4) Quit")
+        selection = int(input("Choose an option: "))
+        while(selection not in [1, 2, 3, 4]):
+            selection = int(input("Invalid selection. Choose an option: "))
 
-    # Look up guest by first name so you can retrieve PIN or modify access (TO-DO)
-#    first_name = input("Enter guest's first name: ")
-#    print(get_pin_by_first_name(first_name, loaded_pins))
+        if selection == 4:
+            sys.exit("Terminating...")
+        else:
+            locks = get_locks(august_access_token)
+            for i in range(0, (len(locks))):
+                print(f'{i+1})', locks[i]['LockName'])
+            lock_num = int(input("Select a lock: "))-1
+            while(lock_num not in [0, 1, 2, 3]):
+                lock_num = int(input("Invalid selection. Select a lock: "))
+            pins = get_pins(locks[lock_num]['LockId'], august_access_token)
+            loaded_pins = pins[1][1]
+        
+        if selection == 1:
+            batch_delete_expired_pins(loaded_pins, locks, lock_num, august_access_token)
+        elif selection == 2:
+            batch_update_invalid_pins(loaded_pins, locks, lock_num, august_access_token)
+        elif selection == 3:
+            # TODO: Look up guest by first name so you can retrieve PIN or modify access
+            first_name = input("Enter guest's first name: ")
+            print(get_pin_by_first_name(first_name, loaded_pins))
+        else:
+            sys.exit("This is not supposed to happen. Exiting.")
 
 
 # Used to search for keys in nested dictionaries and handles when key does not exist
