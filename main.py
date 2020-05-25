@@ -9,14 +9,6 @@ from datetime import datetime
 from gunicornconf import *
 
 AUGUST_API_KEY = '79fd0eb6-381d-4adf-95a0-47721289d1d9'
-AUGUST_EMAIL = '88madisonave@gmail.com'
-AUGUST_PASS = ''    # PRIVATE!! REMOVE BEFORE POSTING TO GITHUB
-
-with open('august_auth.json', 'r') as file:
-        json_repr = file.readline()
-        data = json.dumps(json_repr)
-        AUGUST_EMAIL = data['email']
-        AUGUST_PASS = data['password']
 
 # Flask App configuration
 app = Flask(__name__)
@@ -36,7 +28,7 @@ def auth():
     response = requests.post(
         'https://api-production.august.com/session',
         headers = {'Content-Type': 'application/json', 'x-august-api-key': AUGUST_API_KEY},
-        json = {'identifier': 'phone:+15188828383', 'installId':'0', 'password': AUGUST_PASS}
+        json = {'identifier': 'phone:{}'.format(AUGUST_PHONE), 'installId':'0', 'password': AUGUST_PASS}
     )
 
     access_token = response.headers['x-august-access-token']
@@ -86,14 +78,140 @@ def get_pins(lock_id, august_access_token):
     return list(response.json().items())
 
 
-def get_expired_pins(loaded_pins):
-    expired_pins = []
-    print(datetime.now().isoformat())
+def get_invalid_pins(loaded_pins):
+    invalid_pins = []
+#    print(datetime.now().isoformat())
     for pin in loaded_pins:
 #        print(pin)
         try:
-            if DictQuery(pin).get('accessEndTime') < datetime.now().isoformat() and DictQuery(pin).get('accessType') != 'always':
+            if not DictQuery(pin).get('apiKey'):
+                invalid_pins.append(pin)
+        except:
+#            traceback.print_exc()
+            continue
+    return invalid_pins
+
+
+def copy_pins():
+    print("Copy August PINs from one lock to another:")
+    locks = get_locks(august_access_token)
+    for i in range(0, (len(locks))):
+        print(f'{i+1}) ', locks[i]['LockName'])
+    source_lock_num = int(input("Select source lock: "))-1
+    while(source_lock_num not in [0, 1, 2, 3]):
+        source_lock_num = int(input("Invalid selection. Select source lock: "))
+    dest_lock_num = int(input("Select destination lock: "))-1
+    while(dest_lock_num not in [0, 1, 2, 3]):
+        dest_lock_num = int(input("Invalid selection. Select destination lock: "))
+    pins = get_pins(locks[source_lock_num]['LockId'], august_access_token)
+    loaded_pins = pins[1][1]
+    dest_lock_id = locks[dest_lock_num]['LockId']
+
+    for entry in loaded_pins:
+#        lock_id = DictQuery(entry).get('lockID')
+        user_id = DictQuery(entry).get('userID')
+        pin = DictQuery(entry).get('pin')
+        requests.put(
+            f'https://api-production.august.com/locks/{dest_lock_id}/users/{user_id}/pin',
+            headers={'Content-Type': 'application/json', 'x-august-api-key': AUGUST_API_KEY,
+                     'x-august-access-token': august_access_token},
+            json={
+	            "state": "update",
+	            "action": "intent",
+	            "pin": pin
+            }
+        )
+
+        response = requests.put(
+            f'https://api-production.august.com/locks/{dest_lock_id}/users/{user_id}/pin',
+            headers={'Content-Type': 'application/json', 'x-august-api-key': AUGUST_API_KEY,
+                     'x-august-access-token': august_access_token},
+            json={
+                "state": "update",
+                "action": "commit",
+                "pin": pin
+            }
+        )
+        print(response.json())
+    print("PINs copied from {0} to {1}".format(locks[source_lock_num]['LockName'], locks[dest_lock_num]['LockName']))
+
+
+def update_invalid_pins(invalid_pins, august_access_token):
+    for entry in invalid_pins:
+        lock_id = DictQuery(entry).get('lockID')
+        user_id = DictQuery(entry).get('userID')
+        pin = DictQuery(entry).get('pin')
+        requests.put(
+            f'https://api-production.august.com/locks/{lock_id}/users/{user_id}/pin',
+            headers={'Content-Type': 'application/json', 'x-august-api-key': AUGUST_API_KEY,
+                     'x-august-access-token': august_access_token},
+            json={
+	            "state": "update",
+	            "action": "intent",
+	            "pin": str(int(pin) + 1)
+            }
+        )
+
+        response = requests.put(
+            f'https://api-production.august.com/locks/{lock_id}/users/{user_id}/pin',
+            headers={'Content-Type': 'application/json', 'x-august-api-key': AUGUST_API_KEY,
+                     'x-august-access-token': august_access_token},
+            json={
+                "state": "update",
+                "action": "commit",
+                "pin": str(int(pin) + 1)
+            }
+        )
+
+        requests.put(
+            f'https://api-production.august.com/locks/{lock_id}/users/{user_id}/pin',
+            headers={'Content-Type': 'application/json', 'x-august-api-key': AUGUST_API_KEY,
+                     'x-august-access-token': august_access_token},
+            json={
+                "state": "update",
+                "action": "intent",
+                "pin": str(int(pin) - 1)
+            }
+        )
+
+        response = requests.put(
+            f'https://api-production.august.com/locks/{lock_id}/users/{user_id}/pin',
+            headers={'Content-Type': 'application/json', 'x-august-api-key': AUGUST_API_KEY,
+                     'x-august-access-token': august_access_token},
+            json={
+                "state": "update",
+                "action": "commit",
+                "pin": str(int(pin) - 1)
+            }
+        )
+    #    print(response.json())
+    print("Invalid PINs updated")
+
+
+def batch_update_invalid_pins(loaded_pins, locks, lock_num, august_access_token):
+    # Find and Delete Expired PINs
+    invalid_pins = get_invalid_pins(loaded_pins)
+    print("\nInvalid PINs:")
+    print(*invalid_pins, sep="\n")
+    update_invalid_pins(invalid_pins, august_access_token)
+
+    # Confirm
+    pins = get_pins(locks[lock_num]['LockId'], august_access_token)
+    loaded_pins = pins[1][1]
+    invalid_pins = get_invalid_pins(loaded_pins)
+    print("\nInvalid PINs:")
+    print(*invalid_pins, sep="\n")
+
+
+def get_expired_pins(loaded_pins):
+    expired_pins = []
+#    print(datetime.now().isoformat())
+    for pin in loaded_pins:
+#        print(pin)
+        try:
+            if DictQuery(pin).get('accessEndTime') < datetime.now().isoformat(): # and DictQuery(pin).get('accessType') != 'always':
                 expired_pins.append(pin)
+            print(pin)
         except:
 #            traceback.print_exc()
             continue
@@ -129,6 +247,7 @@ def delete_expired_pins(expired_pins, august_access_token):
         print(response.json())
     print("Expired PINs deleted")
 
+
 def batch_delete_expired_pins(loaded_pins, locks, lock_num, august_access_token):
     # Find and Delete Expired PINs
     expired_pins = get_expired_pins(loaded_pins)
@@ -157,27 +276,43 @@ def get_pin_by_first_name(first_name, pins):
 
 
 def august_main():
+# TODO:
 #    get_reservations()
 #    browser.quit()
+
+    if os.path.exists('august_auth.json'):
+        with open('august_auth.json', 'r') as file:
+            json_repr = file.readline()
+            data = json.loads(json_repr)
+            AUGUST_EMAIL = data['email']
+            AUGUST_PHONE = data['phone']
+            AUGUST_PASS = data['password']
+    else:
+        AUGUST_EMAIL = input("August Email Address:")
+        AUGUST_PHONE = input("August Phone Number:")
+        AUGUST_PASS = input("August Password:")
+
 
     if os.path.exists('access_token.txt'):
         with open('access_token.txt', 'r') as file:
             august_access_token = file.readline()
     else:
         august_access_token = auth()
+
     locks = get_locks(august_access_token)
     for i in range(0, (len(locks))):
         print(f'{i+1}) ', locks[i]['LockName'])
     lock_num = int(input("Select a lock: "))-1
-    while(lock_num not in [0, 1, 2]):
+    while(lock_num not in [0, 1, 2, 3]):
         lock_num = int(input("Invalid selection. Select a lock: "))
     pins = get_pins(locks[lock_num]['LockId'], august_access_token)
     loaded_pins = pins[1][1]
     batch_delete_expired_pins(loaded_pins, locks, lock_num, august_access_token)
+#    batch_update_invalid_pins(loaded_pins, locks, lock_num, august_access_token)
 
     # Look up guest by first name so you can retrieve PIN or modify access (TO-DO)
-    first_name = input("Enter guest's first name: ")
-    print(get_pin_by_first_name(first_name, loaded_pins))
+#    first_name = input("Enter guest's first name: ")
+#    print(get_pin_by_first_name(first_name, loaded_pins))
 
 
 # Used to search for keys in nested dictionaries and handles when key does not exist
@@ -220,8 +355,9 @@ class StandaloneApplication(gunicorn.app.base.BaseApplication):
 
 
 def main():
+#    copy_pins()
     august_main()
-
+'''
     # This allows us to use a plain HTTP callback
     os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = "1"
     options = {
@@ -230,6 +366,7 @@ def main():
     }
     app.run(host='0.0.0.0', port=8080, ssl_context='adhoc')
     StandaloneApplication(app, options).run()
+'''
 
 if __name__ == '__main__':
     main()
